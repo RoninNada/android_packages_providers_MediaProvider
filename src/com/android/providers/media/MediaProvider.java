@@ -1324,7 +1324,13 @@ public class MediaProvider extends ContentProvider {
             return null;
         }
         helper.mNumQueries++;
-        SQLiteDatabase db = helper.getReadableDatabase();
+        SQLiteDatabase db = null;
+        try {
+            db = helper.getReadableDatabase();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
         if (db == null) return null;
         SQLiteQueryBuilder qb = new SQLiteQueryBuilder();
         String limit = uri.getQueryParameter("limit");
@@ -3945,6 +3951,14 @@ public class MediaProvider extends ContentProvider {
                         if (data == null) {
                             throw new FileNotFoundException("Null path for " + uri);
                         }
+                        File directory = new File(data).getParentFile();
+                        if (!directory.isDirectory()) {
+                            if (!directory.mkdirs()) {
+                                Log.e(TAG, "Unable to create .thumbnails directory for " + data);
+                                throw new FileNotFoundException(
+                                        "Unable to create .thumbnails directory " + uri);
+                            }
+                        }
                         return new File(data);
                     } else {
                         throw new FileNotFoundException("Unable to read entry for " + uri);
@@ -4244,6 +4258,10 @@ public class MediaProvider extends ContentProvider {
     private static byte[] getCompressedAlbumArt(Context context, String[] rootPaths, String path) {
         byte[] compressed = null;
 
+        //When playing Music,plug out the SD card to cause this case.
+        if (path == null) {
+            return null;
+        }
         try {
             File f = new File(path);
             ParcelFileDescriptor pfd = openSafely(f,
@@ -4317,9 +4335,18 @@ public class MediaProvider extends ContentProvider {
                         if (file.exists()) {
                             FileInputStream stream = null;
                             try {
-                                compressed = new byte[(int)file.length()];
-                                stream = new FileInputStream(file);
-                                stream.read(compressed);
+
+                                if (file.length() > 0 && file.length() < MAX_ALBUMTHUMBNAIL_FILE_SIZE) {
+                                    compressed = new byte[(int)file.length()];
+                                } else {
+                                    Log.d(TAG, "[getCompressedAlbumArt] bestmatch:" + bestmatch + ", file length: " + file.length());
+                                }
+
+                                if (compressed != null) {
+                                    stream = new FileInputStream(file);
+                                    stream.read(compressed);
+                                }
+
                             } catch (IOException ex) {
                                 compressed = null;
                             } catch (OutOfMemoryError ex) {
@@ -4939,6 +4966,9 @@ public class MediaProvider extends ContentProvider {
 
     // path for writing contents of in memory temp database
     private String mTempDatabasePath;
+
+    // set maximum album thumbnail file size for FULL HD 32 bit bimap (1920*1080*4)
+    private static int MAX_ALBUMTHUMBNAIL_FILE_SIZE = 8 * 1024 * 1024;
 
     // WARNING: the values of IMAGES_MEDIA, AUDIO_MEDIA, and VIDEO_MEDIA and AUDIO_PLAYLISTS
     // are stored in the "files" table, so do not renumber them unless you also add
